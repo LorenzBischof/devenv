@@ -22,6 +22,21 @@
         "type": "github"
       }
     },
+    "crane": {
+      "locked": {
+        "lastModified": 1742143293,
+        "narHash": "sha256-8oKPsMlqlOQ7qnTWvhBEcfVFY1WqHIcSilGVtaLAquw=",
+        "owner": "ipetkov",
+        "repo": "crane",
+        "rev": "de3bb0155823298161c1c0a7805f10d4b4074bbb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ipetkov",
+        "repo": "crane",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -194,6 +209,7 @@
     "root": {
       "inputs": {
         "cachix": "cachix",
+        "crane": "crane",
         "flake-compat": "flake-compat",
         "git-hooks": "git-hooks",
         "nix": "nix",

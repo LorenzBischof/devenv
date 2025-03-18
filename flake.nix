@@ -39,17 +39,43 @@
       devenv.follows = "";
     };
   };
+  inputs.crane.url = "github:ipetkov/crane";
 
-  outputs = { self, nixpkgs, git-hooks, nix, ... }@inputs:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      git-hooks,
+      nix,
+      crane,
+      ...
+    }@inputs:
     let
-      systems = [ "x86_64-linux" "i686-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin" ];
-      forAllSystems = f: builtins.listToAttrs (map (name: { inherit name; value = f name; }) systems);
-      mkPackage = pkgs: pkgs.callPackage ./package.nix {
-        inherit (inputs.nix.packages.${pkgs.stdenv.system}) nix;
-        inherit (inputs.cachix.packages.${pkgs.stdenv.system}) cachix;
-      };
+      systems = [
+        "x86_64-linux"
+        "i686-linux"
+        "x86_64-darwin"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
+      forAllSystems =
+        f:
+        builtins.listToAttrs (
+          map (name: {
+            inherit name;
+            value = f name;
+          }) systems
+        );
+      mkPackage =
+        pkgs:
+        pkgs.callPackage ./package-crane.nix {
+          inherit (inputs.nix.packages.${pkgs.stdenv.system}) nix;
+          inherit (inputs.cachix.packages.${pkgs.stdenv.system}) cachix;
+          craneLib = crane.mkLib pkgs;
+        };
       mkDevShellPackage = config: pkgs: import ./src/devenv-devShell.nix { inherit config pkgs; };
-      mkDocOptions = pkgs:
+      mkDocOptions =
+        pkgs:
         let
           inherit (pkgs) lib;
           eval = pkgs.lib.evalModules {
@@ -60,29 +86,38 @@
             specialArgs = { inherit pkgs inputs; };
           };
           sources = [
-            { name = "${self}"; url = "https://github.com/cachix/devenv/blob/main"; }
-            { name = "${git-hooks}"; url = "https://github.com/cachix/git-hooks.nix/blob/master"; }
+            {
+              name = "${self}";
+              url = "https://github.com/cachix/devenv/blob/main";
+            }
+            {
+              name = "${git-hooks}";
+              url = "https://github.com/cachix/git-hooks.nix/blob/master";
+            }
           ];
-          rewriteSource = decl:
+          rewriteSource =
+            decl:
             let
               prefix = lib.strings.concatStringsSep "/" (lib.lists.take 4 (lib.strings.splitString "/" decl));
               source = lib.lists.findFirst (src: src.name == prefix) { } sources;
               path = lib.strings.removePrefix prefix decl;
               url = "${source.url}${path}";
             in
-            { name = url; url = url; };
+            {
+              name = url;
+              url = url;
+            };
           options = pkgs.nixosOptionsDoc {
             options = builtins.removeAttrs eval.options [ "_module" ];
-            transformOptions = opt: (
-              opt // { declarations = map rewriteSource opt.declarations; }
-            );
+            transformOptions = opt: (opt // { declarations = map rewriteSource opt.declarations; });
           };
         in
         options;
 
     in
     {
-      packages = forAllSystems (system:
+      packages = forAllSystems (
+        system:
         let
           inherit (pkgs) lib;
           pkgs = nixpkgs.legacyPackages.${system};
@@ -94,17 +129,19 @@
             ];
             specialArgs = { inherit pkgs inputs; };
           };
-          generateKeyOptions = key:
-            filterOptions
-              (path: option:
-                lib.any (lib.hasSuffix "/${key}.nix") option.declarations)
-              evaluatedModules.options;
+          generateKeyOptions =
+            key:
+            filterOptions (
+              path: option: lib.any (lib.hasSuffix "/${key}.nix") option.declarations
+            ) evaluatedModules.options;
 
-          optionsDocs = optionParameter: pkgs.nixosOptionsDoc {
-            options = optionParameter;
-            variablelistId = "options";
-            transformOptions = options: removeAttrs options [ "declarations" ];
-          };
+          optionsDocs =
+            optionParameter:
+            pkgs.nixosOptionsDoc {
+              options = optionParameter;
+              variablelistId = "options";
+              transformOptions = options: removeAttrs options [ "declarations" ];
+            };
         in
         {
           default = self.packages.${system}.devenv;
@@ -114,9 +151,15 @@
           devenv-generate-individual-docs =
             let
               inherit (pkgs) lib;
-              languageOptions = builtins.mapAttrs (key: _: generateKeyOptions key) evaluatedModules.config.languages;
-              serviceOptions = builtins.mapAttrs (key: _: generateKeyOptions key) evaluatedModules.config.services;
-              processManagersOptions = builtins.mapAttrs (key: _: generateKeyOptions key) evaluatedModules.config.process.managers;
+              languageOptions = builtins.mapAttrs (
+                key: _: generateKeyOptions key
+              ) evaluatedModules.config.languages;
+              serviceOptions = builtins.mapAttrs (
+                key: _: generateKeyOptions key
+              ) evaluatedModules.config.services;
+              processManagersOptions = builtins.mapAttrs (
+                key: _: generateKeyOptions key
+              ) evaluatedModules.config.process.managers;
               processedOptions = option: builtins.mapAttrs (key: options: optionsDocs options) option;
             in
             pkgs.stdenv.mkDerivation {
@@ -131,49 +174,56 @@
                 mkdir -p $out/docs/individual-docs/supported-process-managers
                 AUTOGEN_NOTICE="[comment]: # (Do not edit this file as it is autogenerated. Go to docs/individual-docs if you want to make edits.)"
 
-                ${lib.concatStringsSep "\n" (lib.mapAttrsToList (key: options:  ''
-                  content=$(cat ${options.optionsCommonMark})
-                  file=$languageDir/${key}.md
+                ${lib.concatStringsSep "\n" (
+                  lib.mapAttrsToList (key: options: ''
+                    content=$(cat ${options.optionsCommonMark})
+                    file=$languageDir/${key}.md
 
-                  sed -i "1i$AUTOGEN_NOTICE" "$file"
-                  substituteInPlace $file \
-                  --subst-var-by \
-                  AUTOGEN_OPTIONS \
-                  "$content"
+                    sed -i "1i$AUTOGEN_NOTICE" "$file"
+                    substituteInPlace $file \
+                    --subst-var-by \
+                    AUTOGEN_OPTIONS \
+                    "$content"
 
-                  cp $file $out/docs/individual-docs/supported-languages/${key}.md
+                    cp $file $out/docs/individual-docs/supported-languages/${key}.md
 
-                '') ( processedOptions languageOptions ))}
+                  '') (processedOptions languageOptions)
+                )}
 
-                ${lib.concatStringsSep "\n" (lib.mapAttrsToList (key: options:  ''
-                  content=$(cat ${options.optionsCommonMark})
-                  file=$serviceDir/${key}.md
+                ${lib.concatStringsSep "\n" (
+                  lib.mapAttrsToList (key: options: ''
+                    content=$(cat ${options.optionsCommonMark})
+                    file=$serviceDir/${key}.md
 
-                  sed -i "1i$AUTOGEN_NOTICE" "$file"
-                  substituteInPlace $file \
-                  --subst-var-by \
-                  AUTOGEN_OPTIONS \
-                  "$content"
+                    sed -i "1i$AUTOGEN_NOTICE" "$file"
+                    substituteInPlace $file \
+                    --subst-var-by \
+                    AUTOGEN_OPTIONS \
+                    "$content"
 
-                  cp $file $out/docs/individual-docs/supported-services/${key}.md
+                    cp $file $out/docs/individual-docs/supported-services/${key}.md
 
-                '') ( processedOptions serviceOptions ))}
+                  '') (processedOptions serviceOptions)
+                )}
 
-                ${lib.concatStringsSep "\n" (lib.mapAttrsToList (key: options:  ''
-                  content=$(cat ${options.optionsCommonMark})
-                  file=$processManagerDir/${key}.md
+                ${lib.concatStringsSep "\n" (
+                  lib.mapAttrsToList (key: options: ''
+                    content=$(cat ${options.optionsCommonMark})
+                    file=$processManagerDir/${key}.md
 
-                  sed -i "1i$AUTOGEN_NOTICE" "$file"
-                  substituteInPlace $file \
-                  --subst-var-by \
-                  AUTOGEN_OPTIONS \
-                  "$content"
+                    sed -i "1i$AUTOGEN_NOTICE" "$file"
+                    substituteInPlace $file \
+                    --subst-var-by \
+                    AUTOGEN_OPTIONS \
+                    "$content"
 
-                  cp $file $out/docs/individual-docs/supported-process-managers/${key}.md
-                '') ( processedOptions  processManagersOptions))}
+                    cp $file $out/docs/individual-docs/supported-process-managers/${key}.md
+                  '') (processedOptions processManagersOptions)
+                )}
               '';
             };
-        });
+        }
+      );
 
       modules = ./src/modules;
       isTmpDir = true;
@@ -222,11 +272,23 @@
       flakeModule = import ./flake-module.nix self;
 
       lib = {
-        mkConfig = args@{ pkgs, inputs, modules }:
+        mkConfig =
+          args@{
+            pkgs,
+            inputs,
+            modules,
+          }:
           (self.lib.mkEval args).config;
-        mkEval = { pkgs, inputs, modules }:
+        mkEval =
+          {
+            pkgs,
+            inputs,
+            modules,
+          }:
           let
-            moduleInputs = { inherit git-hooks; } // inputs;
+            moduleInputs = {
+              inherit git-hooks;
+            } // inputs;
             project = inputs.nixpkgs.lib.evalModules {
               specialArgs = moduleInputs // {
                 inherit pkgs;
@@ -234,22 +296,27 @@
               };
               modules = [
                 (self.modules + /top-level.nix)
-                ({ config, ... }: {
-                  packages = pkgs.lib.mkBefore [
-                    (mkDevShellPackage config pkgs)
-                  ];
-                  devenv.warnOnNewVersion = false;
-                  devenv.flakesIntegration = true;
-                })
+                (
+                  { config, ... }:
+                  {
+                    packages = pkgs.lib.mkBefore [
+                      (mkDevShellPackage config pkgs)
+                    ];
+                    devenv.warnOnNewVersion = false;
+                    devenv.flakesIntegration = true;
+                  }
+                )
               ] ++ modules;
             };
           in
           project;
-        mkShell = args:
+        mkShell =
+          args:
           let
             config = self.lib.mkConfig args;
           in
-          config.shell // {
+          config.shell
+          // {
             ci = config.ciDerivation;
             inherit config;
           };
